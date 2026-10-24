@@ -1,0 +1,8 @@
+# 凭据与产物绝不入库
+secrets*.yml
+secrets*.json
+min_auth*.json
+*_token.txt
+*.log
+__pycache__/
+*.pyc

@@ -1,0 +1,38 @@
+name: Buddy 加油站 签到+派猫猫
+
+on:
+  schedule:
+    # GitHub cron 用 UTC。22:10 UTC = 北京时间（UTC+8）次日 06:10，每天一次
+    - cron: "10 22 * * *"
+  # 手动触发：Actions 页面 → Run workflow，用于首次验收/补签
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 上一次没跑完就不并发，避免同一天重复写接口
+concurrency:
+  group: buddy-daily
+  cancel-in-progress: false
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 签到 + 派猫猫 + 推送飞书
+        env:
+          # 登录态由本机刷新脚本 tools/refresh_token.py 注入（约 55 天刷新一次）
+          WORKBUDDY_AUTH_JSON: ${{ secrets.WORKBUDDY_AUTH_JSON }}
+          # 飞书自定义机器人 webhook（可选；不配则只看 Actions 日志）
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          # 飞书机器人开启了签名校验时才需要（可选）
+          FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
+        shell: bash
+        run: |
+          # 解释器路径不写死版本号，动态取
+          PY="$(command -v python3 || command -v python)"
+          echo "使用解释器: $("$PY" --version 2>&1) @ $PY"
+          "$PY" scripts/wb_checkin.py
