@@ -49,15 +49,24 @@ python tools/refresh_token.py
 
 ### ③ 配通知：邮件（推荐）或飞书，二选一或都配
 
-**邮件**（纯 SMTP，不需要注册任何服务，用的是邮箱的「客户端密码/授权码」而不是登录密码）：
+**邮件**（通用 SMTP，不需要注册任何服务，用的是「客户端密码/授权码」而不是登录密码）。
+只要你的邮箱支持 SMTP + 密码类凭据就能用，不限于下表：
 
-| 邮箱 | `SMTP_HOST` | `SMTP_PORT` | `SMTP_PASS` 从哪拿 |
+| 邮箱 | `MAIL_PROVIDER` 预设 | host:port | 凭据 |
 |---|---|---|---|
-| **139 邮箱**（移动） | `smtp.139.com` | `465` | 网页版 → 设置 → 账户与安全 → 邮箱协议设置：开启 IMAP/SMTP → 客户端密码（自己设一个强密码） |
-| QQ 邮箱 | `smtp.qq.com` | `465` | 设置 → 账号 → 开启「IMAP/SMTP 服务」→ 生成授权码 |
-| 163 邮箱 | `smtp.163.com` | `465` | 设置 → POP3/SMTP/IMAP → 开启服务 → 新增授权码 |
-| Gmail | `smtp.gmail.com` | `587` | 应用专用密码（需开两步验证） |
-| ~~live.cn / outlook.com~~ | — | — | 已停用基础认证（2024-09 起），SMTP 必须 OAuth2，不建议用 |
+| **139 邮箱**（移动） | `139` | `smtp.139.com:465` | 邮箱协议设置开启 IMAP/SMTP → 客户端密码 |
+| QQ 邮箱 | `qq` / `foxmail` | `smtp.qq.com:465` | 设置 → 账号 → 开启 IMAP/SMTP → 授权码 |
+| 163 / 126 / yeah | `163` `126` `yeah` | `smtp.163.com:465` 等 | 设置 → POP3/SMTP/IMAP → 授权码 |
+| 新浪邮箱 | `sina` | `smtp.sina.com:465` | 设置 → 客户端 POP3/SMTP → 授权码 |
+| 189 邮箱（电信） | `189` | `smtp.189.cn:465` | 设置 → 客户端授权码 |
+| 阿里企业邮 | `aliyun` | `smtp.mxhichina.com:465` | 管理员开 SMTP → 客户端密码 |
+| 网易企业邮 | `qiye163` | `smtp.qiye.163.com:465` | 同上 |
+| Gmail | `gmail` | `smtp.gmail.com:587` | 两步验证 → 应用专用密码 |
+| 其它 / 自建 | 不用预设 | 填 `SMTP_HOST`+`SMTP_PORT` | 465 走 SSL，其它端口走 STARTTLS |
+| ~~live.cn / outlook.com~~ | — | — | 个人号已停用基础认证（2024-09 起），只能 OAuth2 |
+
+> 规则：`SMTP_HOST` 优先；没填就按 `MAIL_PROVIDER` 取预设；`SMTP_PORT` 没填则用预设端口（默认 465）。
+> 端口 465 用 SSL 直连，其它端口（如 587）自动 STARTTLS。发件人默认等于 `SMTP_USER`。
 
 **139 邮箱具体步骤**：
 
@@ -68,21 +77,21 @@ python tools/refresh_token.py
 
 | Secret | 值 |
 |---|---|
-| `SMTP_HOST` | `smtp.139.com` |
-| `SMTP_PORT` | `465` |
+| `MAIL_PROVIDER` | `139` |
 | `SMTP_USER` | `cyh92@139.com`（完整邮箱地址） |
 | `SMTP_PASS` | 上一步设置的客户端密码 |
 | `MAIL_TO` | `cyh92@139.com`（多个用英文逗号分隔） |
 
+> 用预设就**不必**再建 `SMTP_HOST` / `SMTP_PORT`；换服务商只改 `MAIL_PROVIDER` 一个值。
+
 > 先在本机验证凭据，再配到仓库里（不需要跑签到）：
 > ```bash
-> export SMTP_HOST=smtp.139.com SMTP_PORT=465
-> export SMTP_USER=cyh92@139.com SMTP_PASS='你的客户端密码'
-> export MAIL_TO=cyh92@139.com
+> export MAIL_PROVIDER=139 SMTP_USER=cyh92@139.com
+> export SMTP_PASS='你的客户端密码' MAIL_TO=cyh92@139.com
 > python scripts/wb_checkin.py --test-mail
 > ```
-> 输出 `[邮件] 已发送 → cyh92@139.com` 即通道打通；`535` 多为客户端密码错或服务没开，
-> `550` 多为发件人与登录账号不一致（`MAIL_FROM` 保持默认即可）。
+> 输出 `[邮件] 已发送 → cyh92@139.com` 即通道打通；`535`/连接被断多为客户端密码错或
+> 服务没开，`550` 多为发件人与登录账号不一致（`MAIL_FROM` 保持默认即可）。
 
 > 邮件标题样例：`✅ Buddy加油站 2026-10-24｜签到成功 +100｜猫猫：已出发 → 商场店铺…`
 > 正文分《签到》《猫猫旅行》两段，HTML + 纯文本双版本。发信失败只打印提示，不影响签到结论。

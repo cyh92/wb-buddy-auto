@@ -52,6 +52,25 @@ TRAVEL_DEPART_PATH = "/activity/growth/buddy/travel/depart"   # POST 派出
 
 TRAVEL_STATE_TEXT = {"idle": "空闲", "traveling": "旅行中", "arrived": "已到家"}
 
+# 常见邮箱 SMTP 预设：配 MAIL_PROVIDER 后可不填 SMTP_HOST / SMTP_PORT
+# 只收录「支持 SMTP + 密码类凭据（授权码/客户端密码/应用专用密码）」的服务商
+MAIL_PROVIDERS = {
+    "139": ("smtp.139.com", 465),
+    "qq": ("smtp.qq.com", 465),
+    "foxmail": ("smtp.qq.com", 465),
+    "163": ("smtp.163.com", 465),
+    "126": ("smtp.126.com", 465),
+    "yeah": ("smtp.yeah.net", 465),
+    "sina": ("smtp.sina.com", 465),
+    "sohu": ("smtp.sohu.com", 465),
+    "189": ("smtp.189.cn", 465),
+    "aliyun": ("smtp.mxhichina.com", 465),      # 阿里企业邮箱
+    "qiye163": ("smtp.qiye.163.com", 465),      # 网易企业邮箱
+    "exmail": ("smtp.exmail.qq.com", 465),      # 腾讯企业邮
+    "feishu": ("smtp.feishu.cn", 465),          # 飞书邮箱
+    "gmail": ("smtp.gmail.com", 587),           # 需应用专用密码
+}
+
 
 class AuthError(Exception):
     pass
@@ -385,21 +404,31 @@ def build_notice(summary):
 def send_mail(subject, text, html=None):
     """SMTP 发信（纯标准库，适配 QQ/163/Gmail/Outlook）。
 
-    需配置 SMTP_HOST / SMTP_USER / SMTP_PASS（授权码，不是登录密码）/ MAIL_TO，
-    可选 SMTP_PORT（默认 465）、MAIL_FROM（默认同 SMTP_USER）。
+    需配置 SMTP_USER / SMTP_PASS（授权码，不是登录密码）/ MAIL_TO，
+    host 二选一：SMTP_HOST + SMTP_PORT，或直接给 MAIL_PROVIDER（见 MAIL_PROVIDERS 预设）。
+    可选 MAIL_FROM（默认同 SMTP_USER）。465 走 SSL，其它端口走 STARTTLS。
     未配置或失败都只打印提示，绝不抛异常、不影响签到结论。
     """
     host = (os.environ.get("SMTP_HOST") or "").strip()
     user = (os.environ.get("SMTP_USER") or "").strip()
     pwd = (os.environ.get("SMTP_PASS") or "").strip()
     to = (os.environ.get("MAIL_TO") or "").strip()
+    provider = (os.environ.get("MAIL_PROVIDER") or "").strip().lower()
+    preset = MAIL_PROVIDERS.get(provider)
+    if not host and preset:
+        host, preset_port = preset
+    if provider and not preset and not (os.environ.get("SMTP_HOST") or "").strip():
+        print("[邮件] 未知的 MAIL_PROVIDER: %s（可选：%s，或直接填 SMTP_HOST/SMTP_PORT）"
+              % (provider, "/".join(sorted(MAIL_PROVIDERS))))
+        return False
     if not (host and user and pwd and to):
-        print("[邮件] 未配置 SMTP_HOST/SMTP_USER/SMTP_PASS/MAIL_TO，跳过发信")
+        print("[邮件] 未配置发信参数，跳过发信（需要 SMTP_USER/SMTP_PASS/MAIL_TO，"
+              "host 可用 MAIL_PROVIDER 预设：%s）" % "/".join(sorted(MAIL_PROVIDERS)))
         return False
     try:
-        port = int((os.environ.get("SMTP_PORT") or "465").strip())
+        port = int((os.environ.get("SMTP_PORT") or str(preset[1] if preset else 465)).strip())
     except ValueError:
-        port = 465
+        port = preset[1] if preset else 465
     sender = (os.environ.get("MAIL_FROM") or "").strip() or user
     recipients = [a.strip() for a in to.split(",") if a.strip()]
 
