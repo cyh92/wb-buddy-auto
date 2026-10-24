@@ -25,7 +25,7 @@ tools/local_run.py              本机自测入口：直接复用本机登录态
 
 ## 一、运行前准备
 
-跑之前先确认下面 5 项。这不是形式主义——缺任何一项都**不会报出人话**：要么脚本报「解密失败」让人以为是密码问题，要么 GitHub 的 job 悄悄变红而你根本不会去看。
+跑之前先确认下面 4 样东西 + 最后那张清单。这不是形式主义——缺任何一项都**不会报出人话**：要么脚本报「解密失败」让人以为是密码问题，要么 GitHub 的 job 悄悄变红而你根本不会去看。
 
 ### 1. Python 3.8+
 
@@ -68,9 +68,12 @@ python --version
 | 2 | 客户端 | 已登录、正在运行、与终端同一 Windows 用户 |
 | 3 | 邮箱 | IMAP/SMTP 已开启，已生成客户端密码（非登录密码） |
 | 4 | 仓库 | Private，默认分支 = 推送分支 |
-| 5 | 冒烟测试 | `--test-mail` 输出 `[邮件] 已发送 → 你的邮箱` |
+| 5 | Secret | **一共 5 个**：`WORKBUDDY_AUTH_JSON`、`MAIL_PROVIDER`、`SMTP_USER`、`SMTP_PASS`、`MAIL_TO`（清单见「二、④」） |
+| 6 | 冒烟测试 | `--test-mail` 输出 `[邮件] 已发送 → 你的邮箱` |
 
-## 二、首次部署（3 步）
+> 第 5 项是最容易漏的：这些 Secret 分散在「导 token」和「配邮件」两处产生，配完务必对着「二、④ 核对」那张表数一遍。
+
+## 二、首次部署（3 步 + 5 个 Secret）
 
 ### ① 建一个 Private 仓库，推代码
 
@@ -161,6 +164,39 @@ python tools/refresh_token.py
 1. 飞书群 → 设置 → 群机器人 → 添加机器人 → **自定义机器人**
 2. 复制 webhook 地址（`https://open.feishu.cn/open-apis/bot/v2/hook/xxx`）
 3. Secrets 新增：`FEISHU_WEBHOOK` = 该地址；`FEISHU_SECRET` = 仅当机器人开了「签名校验」才需要
+
+### ④ 核对：一共 5 个必填 Secret
+
+前面 ②③ 是分开讲的，容易配漏。**Settings → Secrets and variables → Actions → Repository secrets** 里配完，应该正好是这 5 条（名称大小写敏感，不能有空格）：
+
+| # | Name | 值 | 从哪来 |
+|---|---|---|---|
+| 1 | `WORKBUDDY_AUTH_JSON` | `{"auth":{"accessToken":"eyJ...","domain":"www.workbuddy.cn"}}` | `python tools/refresh_token.py`（复制到剪贴板后整段粘） |
+| 2 | `MAIL_PROVIDER` | `139` | 手填 |
+| 3 | `SMTP_USER` | `cyh92@139.com` | 手填，完整邮箱地址 |
+| 4 | `SMTP_PASS` | 客户端密码 | 邮箱设置里生成的那个，**不是登录密码** |
+| 5 | `MAIL_TO` | `cyh92@139.com` | 收件地址，多个用英文逗号分隔 |
+
+> 表里第 1 行的 JSON 是**结构示意**，`eyJ...` 不是真值；你要粘的是脚本输出到剪贴板的那一整行（单行、无换行、以 `{"auth":` 开头）。
+
+下面 3 个**默认都不用建**，只在特定情况下才加：
+
+| Name | 什么时候需要 |
+|---|---|
+| `SMTP_HOST` + `SMTP_PORT` | 邮箱不在预设表里，或要临时换端口。填了会**覆盖** `MAIL_PROVIDER` 的预设 |
+| `FEISHU_WEBHOOK` | 想同时推到飞书群（与邮件可共存） |
+| `FEISHU_SECRET` | 飞书机器人开了「签名校验」才需要 |
+
+三个最常见的配错，症状各不相同：
+
+| 配错方式 | 表现 |
+|---|---|
+| 粘贴时带了首尾空格或换行 | 认证失败/连不上。GitHub 的输入框不会帮你 trim，粘完手动退格到边缘 |
+| `WORKBUDDY_AUTH_JSON` 只粘了 `eyJ...` token 本身，没粘整段 JSON | 云端报登录态解析失败——脚本要的是带 `{"auth":{...}}` 外壳的那一整串 |
+| 建在 Variables 或 Environments 里而不是 **Secrets** | workflow 读不到，静默降级成「未配置发信参数，跳过发信」。变量名旁边一定要有 🔒 图标 |
+
+> 核对技巧：配完在 Actions 日志里搜 `[邮件]`。出现 `[邮件] 已发送 → 你的邮箱` 说明 5 个全对；
+> 出现 `[邮件] 未配置发信参数，跳过发信` 说明邮件那 4 个里至少缺一个或名字拼错。
 
 配好后：Actions 页 → **Buddy 加油站 签到+派猫猫** → Run workflow，跑一次验收。
 两个通道都不配也能跑，只是结果只能在 Actions 日志里看。
