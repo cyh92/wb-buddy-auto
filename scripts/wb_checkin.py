@@ -25,11 +25,15 @@ import json
 import os
 import random
 import re
+import smtplib
+import ssl
 import sys
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+from email.utils import formataddr, formatdate
 
 MAX_RETRY = 2
 HTTP_TIMEOUT = 30
@@ -325,7 +329,109 @@ def travel_flow(token):
                 "final_state": None}
 
 
-# ---------------- 飞书推送 ----------------
+# ---------------- 通知推送（邮件 / 飞书，可选） ----------------
+
+def build_notice(summary):
+    """把结果渲染成 (subject, text, html)：签到与猫猫两段分开写，邮件/飞书共用。"""
+    c, t = summary["checkin"], summary["travel"]
+    icon_c = "✅" if c["ok"] else "❌"
+    icon_t = "🐱" if t["ok"] else "⚠️"
+    head = "Buddy加油站日报 %s" % summary["date"]
+
+    lines = ["【签到】%s" % icon_c, c["msg"] or "（无信息）"]
+    if c["activity_credits"] is not None:
+        lines.append("签到活动累计：%s 积分" % c["activity_credits"])
+    if summary["balance"] is not None:
+        lines.append("账户余额：%s 积分" % summary["balance"])
+    lines += ["", "【猫猫旅行】%s" % icon_t]
+    lines += t["parts"] or ["（无信息）"]
+    if t["final_state"]:
+        lines.append("当前状态：%s" % t["final_state"])
+    if not t["ok"]:
+        lines.append("（猫猫环节失败，不影响今日签到结论）")
+    lines += ["", "由 GitHub Actions 自动执行 · 签到结论：%s" % ("成功" if c["ok"] else "失败")]
+    text = head + "\n\n" + "\n".join(lines)
+
+    # 邮件标题：一眼看清今天的结果（过长截断加省略号）
+    brief = "签到成功" if c["ok"] else "签到失败"
+    if c["ok"] and c["points"]:
+        brief += " +%s" % c["points"]
+    tail = (t["parts"][0] if t["parts"] else "无信息")
+    tail = tail if len(tail) <= 16 else tail[:16] + "…"
+    subject = "%s Buddy加油站 %s｜%s｜猫猫：%s" % (
+        "✅" if c["ok"] else "❌", summary["date"][:10], brief, tail)
+
+    rows = [("签到", c["msg"] or "-"),
+            ("签到活动累计", ("%s 积分" % c["activity_credits"]) if c["activity_credits"] is not None else "-"),
+            ("账户余额", ("%s 积分" % summary["balance"]) if summary["balance"] is not None else "-"),
+            ("猫猫旅行", "；<br>".join(t["parts"]) if t["parts"] else "-"),
+            ("猫猫状态", t["final_state"] or "-")]
+    tr = "".join(
+        "<tr><td style=\"padding:7px 12px;color:#666;white-space:nowrap;"
+        "border-bottom:1px solid #f0f0f0\">%s</td>"
+        "<td style=\"padding:7px 12px;border-bottom:1px solid #f0f0f0\">%s</td></tr>" % kv
+        for kv in rows)
+    html = (
+        "<div style=\"font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;"
+        "font-size:14px;color:#222;max-width:560px\">"
+        "<h3 style=\"margin:0 0 12px;font-size:16px\">%s %s</h3>"
+        "<table style=\"border-collapse:collapse;border:1px solid #eee;background:#fafafa\">%s</table>"
+        "<p style=\"color:#999;font-size:12px;margin-top:14px\">由 GitHub Actions 自动执行"
+        "　签到结论：%s</p></div>"
+        % ("🔥", head, tr, "成功" if c["ok"] else "失败"))
+    return subject, text, html
+
+
+def send_mail(subject, text, html=None):
+    """SMTP 发信（纯标准库，适配 QQ/163/Gmail/Outlook）。
+
+    需配置 SMTP_HOST / SMTP_USER / SMTP_PASS（授权码，不是登录密码）/ MAIL_TO，
+    可选 SMTP_PORT（默认 465）、MAIL_FROM（默认同 SMTP_USER）。
+    未配置或失败都只打印提示，绝不抛异常、不影响签到结论。
+    """
+    host = (os.environ.get("SMTP_HOST") or "").strip()
+    user = (os.environ.get("SMTP_USER") or "").strip()
+    pwd = (os.environ.get("SMTP_PASS") or "").strip()
+    to = (os.environ.get("MAIL_TO") or "").strip()
+    if not (host and user and pwd and to):
+        print("[邮件] 未配置 SMTP_HOST/SMTP_USER/SMTP_PASS/MAIL_TO，跳过发信")
+        return False
+    try:
+        port = int((os.environ.get("SMTP_PORT") or "465").strip())
+    except ValueError:
+        port = 465
+    sender = (os.environ.get("MAIL_FROM") or "").strip() or user
+    recipients = [a.strip() for a in to.split(",") if a.strip()]
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = formataddr(("Buddy加油站", sender))
+    msg["To"] = ", ".join(recipients)
+    msg["Date"] = formatdate(localtime=True)
+    msg.set_content(text)
+    if html:
+        msg.add_alternative(html, subtype="html")
+
+    try:
+        if port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=25,
+                                      context=ssl.create_default_context())
+        else:
+            server = smtplib.SMTP(host, port, timeout=25)
+            server.ehlo()
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
+        with server:
+            server.login(user, pwd)
+            server.send_message(msg, from_addr=sender, to_addrs=recipients)
+        print("[邮件] 已发送 → %s（%s:%s）" % (", ".join(recipients), host, port))
+        return True
+    except Exception as e:
+        # 常见错误：535 授权码错误 / 550 发件人不一致 / 连接被拒（端口用 465 或 587）
+        print("[邮件] 发送失败（不影响签到结论）：%s: %s"
+              % (type(e).__name__, mask_text(e)))
+        return False
+
 
 def feishu_push(text):
     """推送飞书自定义机器人。webhook 未配置/失败返回 False（不抛异常）。"""
@@ -355,6 +461,18 @@ def feishu_push(text):
     except Exception as e:
         print("[飞书] 推送异常（不影响签到结论）：%s: %s" % (type(e).__name__, e))
         return False
+
+
+def notify(subject, text, html):
+    """多通道分发：配了就发，都没配就只留日志。返回已成功的通道名。"""
+    sent = []
+    if send_mail(subject, text, html):
+        sent.append("邮件")
+    if feishu_push(text):
+        sent.append("飞书")
+    if not sent:
+        print("[通知] 未配置任何通道（邮件 SMTP_* / 飞书 FEISHU_WEBHOOK），结果见上方 JSON")
+    return sent
 
 
 # ---------------- 主流程 ----------------
@@ -397,24 +515,16 @@ def main():
     print("\n===== 结果摘要 =====")
     print(mask_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str)))
 
-    # 5. 飞书：签到 / 猫猫两段分开写
-    c, t = summary["checkin"], summary["travel"]
-    icon_c = "✅" if c["ok"] else "❌"
-    icon_t = "🐱" if travel["ok"] else "⚠️"
-    lines = ["🔥 Buddy 加油站日报 %s" % summary["date"],
-             "", "【签到】%s" % icon_c, c["msg"] or "（无信息）"]
-    if c["activity_credits"] is not None:
-        lines.append("签到活动累计：%s 积分" % c["activity_credits"])
-    if balance is not None:
-        lines.append("账户余额：%s 积分" % balance)
-    lines += ["", "【猫猫旅行】%s" % icon_t]
-    lines += t["parts"] or ["（无信息）"]
-    if travel["final_state"]:
-        lines.append("当前状态：%s" % travel["final_state"])
-    if not travel["ok"]:
-        lines.append("（猫猫环节失败，不影响今日签到结论）")
-    if not no_push:
-        feishu_push("\n".join(lines))
+    # 5. 通知：邮件 / 飞书（配哪个走哪个；签到、猫猫两段分开写）
+    c = summary["checkin"]
+    subject, notice_text, notice_html = build_notice(summary)
+    if "--mail-preview" in argv:
+        print("\n===== 通知预览（未发送） =====")
+        print("Subject: %s" % subject)
+        print("-" * 40)
+        print(notice_text)
+    elif not no_push:
+        notify(subject, notice_text, notice_html)
 
     # 6. 退出码只看签到
     if not c["ok"]:

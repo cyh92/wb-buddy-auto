@@ -26,7 +26,13 @@ jobs:
         env:
           # 登录态由本机刷新脚本 tools/refresh_token.py 注入（约 55 天刷新一次）
           WORKBUDDY_AUTH_JSON: ${{ secrets.WORKBUDDY_AUTH_JSON }}
-          # 飞书自定义机器人 webhook（可选；不配则只看 Actions 日志）
+          # 邮件通知（可选，推荐）：SMTP 授权码，不是邮箱登录密码
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          # 飞书自定义机器人 webhook（可选，与邮件可共存）
           FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
           # 飞书机器人开启了签名校验时才需要（可选）
           FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}

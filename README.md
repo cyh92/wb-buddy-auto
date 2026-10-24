@@ -1,22 +1,23 @@
 # Buddy 加油站 · 云端自动签到 + 派猫猫
 
 把 WorkBuddy「Buddy 加油站」的**每日签到**和**派猫猫旅行**交给 GitHub Actions 免费定时任务，
-云端 runner 执行，**不需要任何常开设备**，结果推送到飞书。
+云端 runner 执行，**不需要任何常开设备**，结果推送邮件（或飞书）。
 
 - 每天北京时间 **06:10** 跑一次（UTC 22:10），签到 + 猫猫一趟做完
 - 猫猫：**先领**已到家（arrived）的旅行积分，**再判断**能不能派新的一趟；服务端
   `daily_limit_reached` 为真 / 旅行中 / 非 idle 一律不派 → 天然幂等，当天重复跑不重复派
 - 签到：先查 `today_checked_in`，已签直接跳过；接口本身也幂等（code=10001）
 - 猫猫环节任何失败都被隔离，**签到成功即任务成功**（退出码 0）
-- 飞书消息里「签到」和「猫猫旅行」分两段写清
+- 通知里「签到」和「猫猫旅行」分两段写清；邮件用 SMTP 直发（零第三方依赖），飞书可选
 
 ## 目录
 
 ```
 .github/workflows/buddy.yml     定时任务（cron + 手动触发）
-scripts/wb_checkin.py           云端主脚本（纯标准库，签到+领奖+派遣+飞书推送）
+scripts/wb_checkin.py           云端主脚本（纯标准库：签到+领奖+派遣+邮件/飞书推送）
 scripts/wb_atrest.py            登录态读取/解密模块（本机刷新用，Actions 不依赖）
 tools/refresh_token.py          本机刷新脚本：读本机登录态 → 注入 GitHub secret
+tools/local_run.py              本机自测入口：直接复用本机登录态跑一轮
 ```
 
 ## 一、首次部署（3 步）
@@ -46,14 +47,48 @@ python tools/refresh_token.py
 
 > 明文 token 不进仓库、不进日志：脚本只打印掩码，`.gitignore` 已排除 `secrets*.yml|json`、`min_auth*.json`。
 
-### ③ 配飞书机器人（可选但推荐）
+### ③ 配通知：邮件（推荐）或飞书，二选一或都配
+
+**邮件**（纯 SMTP，不需要注册任何服务，用的是你邮箱的「授权码」而不是登录密码）：
+
+| 邮箱 | `SMTP_HOST` | `SMTP_PORT` | `SMTP_PASS` 从哪拿 |
+|---|---|---|---|
+| QQ 邮箱 | `smtp.qq.com` | `465` | 设置 → 账号 → 开启「IMAP/SMTP 服务」→ 生成授权码 |
+| 163 邮箱 | `smtp.163.com` | `465` | 设置 → POP3/SMTP/IMAP → 开启服务 → 新增授权码 |
+| 126 邮箱 | `smtp.126.com` | `465` | 同上 |
+| Gmail | `smtp.gmail.com` | `587` | Google 账号 → 安全性 → 应用专用密码（需开两步验证） |
+| 企业邮箱 | 问管理员 | `465` 或 `587` | 一般为客户端专用密码 |
+
+在仓库 Settings → Secrets → Actions 新增 5 个（`SMTP_PORT`、`MAIL_FROM` 可省，后者的默认值等于 `SMTP_USER`）：
+
+| Secret | 示例 |
+|---|---|
+| `SMTP_HOST` | `smtp.qq.com` |
+| `SMTP_PORT` | `465` |
+| `SMTP_USER` | `你的QQ号@qq.com` |
+| `SMTP_PASS` | 授权码（16 位左右，**不是**登录密码） |
+| `MAIL_TO` | 收件地址，多个用英文逗号分隔 |
+
+> 邮件标题样例：`✅ Buddy加油站 2026-10-24｜签到成功 +100｜猫猫：已出发 → 商场店铺…`
+> 正文分《签到》《猫猫旅行》两段，HTML + 纯文本双版本。发信失败只打印提示，不影响签到结论。
+
+**飞书**（可选，与邮件可共存）：
 
 1. 飞书群 → 设置 → 群机器人 → 添加机器人 → **自定义机器人**
 2. 复制 webhook 地址（`https://open.feishu.cn/open-apis/bot/v2/hook/xxx`）
-3. 仓库 Settings → Secrets → Actions 新增：
-   - `FEISHU_WEBHOOK` = 上面那个地址
-   - `FEISHU_SECRET` = 仅在机器人开启「签名校验」时填，否则不建
-4. Actions 页 → **Buddy 加油站 签到+派猫猫** → Run workflow，跑一次验收
+3. Secrets 新增：`FEISHU_WEBHOOK` = 该地址；`FEISHU_SECRET` = 仅当机器人开了「签名校验」才需要
+
+配好后：Actions 页 → **Buddy 加油站 签到+派猫猫** → Run workflow，跑一次验收。
+两个通道都不配也能跑，只是结果只能在 Actions 日志里看。
+
+> ⚠️ **仓库必须在 GitHub 上**。`gitee.com/cyh92/wb-buddy-auto` 这类 Gitee 仓库不会执行
+> `.github/workflows/buddy.yml`（Gitee 用的是自家 Gitee Go，语法完全不同）。建议 GitHub 建私有仓
+> 作为 `github` 远端双推，Gitee 留作备份：
+>
+> ```bash
+> git remote add github https://github.com/<owner>/<repo>.git
+> git push github master
+> ```
 
 ## 二、约 55 天一次：换 Token
 
@@ -63,11 +98,13 @@ JWT 实测有效期约 **55 天**，流水线每天打印剩余天数，**不足
 ## 三、本机自测
 
 ```bash
-# 只读：查状态不领取（不会产生任何写操作）
-# 实际跑一轮（签到 + 猫猫闭环，会真实领取/派遣）
-python scripts/wb_checkin.py          # 需先 export WORKBUDDY_AUTH_JSON=...
-python scripts/wb_checkin.py --no-push
+python tools/local_run.py                 # 读本机登录态，真实跑一轮（签到+猫猫）
+python tools/local_run.py --mail-preview  # 只渲染通知内容，不发信、不推飞书
+python tools/local_run.py --no-push       # 真实跑但跳过所有通知
 ```
+
+也可以完全不碰本机登录态、只验证发信（先 export 好 SMTP_* 与 MAIL_TO）：
+`python scripts/wb_checkin.py` 会照常跑业务并发信。
 
 退出码：`0` 签到成功｜`1` 签到失败｜`2` 登录态缺失/无效。
 
