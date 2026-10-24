@@ -141,19 +141,19 @@ python tools/refresh_token.py
 | Secret | 值 |
 |---|---|
 | `MAIL_PROVIDER` | `139` |
-| `SMTP_USER` | `cyh92@139.com`（完整邮箱地址） |
+| `SMTP_USER` | `yourname@139.com`（完整邮箱地址） |
 | `SMTP_PASS` | 上一步设置的客户端密码 |
-| `MAIL_TO` | `cyh92@139.com`（多个用英文逗号分隔） |
+| `MAIL_TO` | `yourname@139.com`（多个用英文逗号分隔） |
 
 > 用预设就**不必**再建 `SMTP_HOST` / `SMTP_PORT`；换服务商只改 `MAIL_PROVIDER` 一个值。
 
 > 先在本机验证凭据，再配到仓库里（不需要跑签到）：
 > ```bash
-> export MAIL_PROVIDER=139 SMTP_USER=cyh92@139.com
-> export SMTP_PASS='你的客户端密码' MAIL_TO=cyh92@139.com
+> export MAIL_PROVIDER=139 SMTP_USER=yourname@139.com
+> export SMTP_PASS='你的客户端密码' MAIL_TO=yourname@139.com
 > python scripts/wb_checkin.py --test-mail
 > ```
-> 输出 `[邮件] 已发送 → cyh92@139.com` 即通道打通；`535`/连接被断多为客户端密码错或
+> 输出 `[邮件] 已发送 → yourname@139.com` 即通道打通；`535`/连接被断多为客户端密码错或
 > 服务没开，`550` 多为发件人与登录账号不一致（`MAIL_FROM` 保持默认即可）。
 
 > 邮件标题样例：`✅ Buddy加油站 2026-10-24｜签到成功 +100｜猫猫：已出发 → 商场店铺…`
@@ -173,9 +173,9 @@ python tools/refresh_token.py
 |---|---|---|---|
 | 1 | `WORKBUDDY_AUTH_JSON` | `{"auth":{"accessToken":"eyJ...","domain":"www.workbuddy.cn"}}` | `python tools/refresh_token.py`（复制到剪贴板后整段粘） |
 | 2 | `MAIL_PROVIDER` | `139` | 手填 |
-| 3 | `SMTP_USER` | `cyh92@139.com` | 手填，完整邮箱地址 |
+| 3 | `SMTP_USER` | `yourname@139.com` | 手填，完整邮箱地址 |
 | 4 | `SMTP_PASS` | 客户端密码 | 邮箱设置里生成的那个，**不是登录密码** |
-| 5 | `MAIL_TO` | `cyh92@139.com` | 收件地址，多个用英文逗号分隔 |
+| 5 | `MAIL_TO` | `yourname@139.com` | 收件地址，多个用英文逗号分隔 |
 
 > 表里第 1 行的 JSON 是**结构示意**，`eyJ...` 不是真值；你要粘的是脚本输出到剪贴板的那一整行（单行、无换行、以 `{"auth":` 开头）。
 
@@ -202,7 +202,7 @@ python tools/refresh_token.py
 两个通道都不配也能跑，只是结果只能在 Actions 日志里看。
 
 > ⚠️ **仓库必须在 GitHub 上**：Gitee 不会执行 `.github/workflows/buddy.yml`（它用自家的 Gitee Go，
-> 语法完全不同），所以 `gitee.com/cyh92/wb-buddy-auto` 只能当代码备份，定时任务必须活在 GitHub 仓里。
+> 语法完全不同），所以本仓库的 Gitee 镜像只能当代码备份，定时任务必须活在 GitHub 仓里。
 
 ## 三、约 55 天一次：换 Token
 
@@ -217,10 +217,10 @@ JWT 实测有效期约 **55 天**，流水线每天打印剩余天数，**不足
 cd F:/androiddemo/wb-buddy-auto
 
 # 第 1 步：只验邮箱凭据，不调任何业务接口（几秒钟）
-export MAIL_PROVIDER=139 SMTP_USER=cyh92@139.com
-export SMTP_PASS='你的客户端密码' MAIL_TO=cyh92@139.com
+export MAIL_PROVIDER=139 SMTP_USER=yourname@139.com
+export SMTP_PASS='你的客户端密码' MAIL_TO=yourname@139.com
 python scripts/wb_checkin.py --test-mail
-# 期望：[邮件] 已发送 → cyh92@139.com
+# 期望：[邮件] 已发送 → yourname@139.com
 
 # 第 2 步：真实跑一轮（自动读本机登录态 → 签到 → 猫猫 → 发信）
 python tools/local_run.py
