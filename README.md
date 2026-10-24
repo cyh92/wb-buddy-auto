@@ -49,25 +49,40 @@ python tools/refresh_token.py
 
 ### ③ 配通知：邮件（推荐）或飞书，二选一或都配
 
-**邮件**（纯 SMTP，不需要注册任何服务，用的是你邮箱的「授权码」而不是登录密码）：
+**邮件**（纯 SMTP，不需要注册任何服务，用的是邮箱的「客户端密码/授权码」而不是登录密码）：
 
 | 邮箱 | `SMTP_HOST` | `SMTP_PORT` | `SMTP_PASS` 从哪拿 |
 |---|---|---|---|
+| **139 邮箱**（移动） | `smtp.139.com` | `465` | 网页版 → 设置 → 账户与安全 → 邮箱协议设置：开启 IMAP/SMTP → 客户端密码（自己设一个强密码） |
 | QQ 邮箱 | `smtp.qq.com` | `465` | 设置 → 账号 → 开启「IMAP/SMTP 服务」→ 生成授权码 |
 | 163 邮箱 | `smtp.163.com` | `465` | 设置 → POP3/SMTP/IMAP → 开启服务 → 新增授权码 |
-| 126 邮箱 | `smtp.126.com` | `465` | 同上 |
-| Gmail | `smtp.gmail.com` | `587` | Google 账号 → 安全性 → 应用专用密码（需开两步验证） |
-| 企业邮箱 | 问管理员 | `465` 或 `587` | 一般为客户端专用密码 |
+| Gmail | `smtp.gmail.com` | `587` | 应用专用密码（需开两步验证） |
+| ~~live.cn / outlook.com~~ | — | — | 已停用基础认证（2024-09 起），SMTP 必须 OAuth2，不建议用 |
 
-在仓库 Settings → Secrets → Actions 新增 5 个（`SMTP_PORT`、`MAIL_FROM` 可省，后者的默认值等于 `SMTP_USER`）：
+**139 邮箱具体步骤**：
 
-| Secret | 示例 |
+1. 网页登录 `mail.10086.cn` → 右上「设置」→「账户与安全」→「邮箱协议设置」
+2. 把 **IMAP/SMTP** 服务设为开启（默认是关的，不开必失败）
+3. 同页「客户端密码」→ 自定义一个 8 位以上强密码（**不要和登录密码相同**）
+4. GitHub 仓库 Settings → Secrets → Actions 新增：
+
+| Secret | 值 |
 |---|---|
-| `SMTP_HOST` | `smtp.qq.com` |
+| `SMTP_HOST` | `smtp.139.com` |
 | `SMTP_PORT` | `465` |
-| `SMTP_USER` | `你的QQ号@qq.com` |
-| `SMTP_PASS` | 授权码（16 位左右，**不是**登录密码） |
-| `MAIL_TO` | 收件地址，多个用英文逗号分隔 |
+| `SMTP_USER` | `cyh92@139.com`（完整邮箱地址） |
+| `SMTP_PASS` | 上一步设置的客户端密码 |
+| `MAIL_TO` | `cyh92@139.com`（多个用英文逗号分隔） |
+
+> 先在本机验证凭据，再配到仓库里（不需要跑签到）：
+> ```bash
+> export SMTP_HOST=smtp.139.com SMTP_PORT=465
+> export SMTP_USER=cyh92@139.com SMTP_PASS='你的客户端密码'
+> export MAIL_TO=cyh92@139.com
+> python scripts/wb_checkin.py --test-mail
+> ```
+> 输出 `[邮件] 已发送 → cyh92@139.com` 即通道打通；`535` 多为客户端密码错或服务没开，
+> `550` 多为发件人与登录账号不一致（`MAIL_FROM` 保持默认即可）。
 
 > 邮件标题样例：`✅ Buddy加油站 2026-10-24｜签到成功 +100｜猫猫：已出发 → 商场店铺…`
 > 正文分《签到》《猫猫旅行》两段，HTML + 纯文本双版本。发信失败只打印提示，不影响签到结论。

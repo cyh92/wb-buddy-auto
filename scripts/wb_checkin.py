@@ -427,9 +427,17 @@ def send_mail(subject, text, html=None):
         print("[邮件] 已发送 → %s（%s:%s）" % (", ".join(recipients), host, port))
         return True
     except Exception as e:
-        # 常见错误：535 授权码错误 / 550 发件人不一致 / 连接被拒（端口用 465 或 587）
-        print("[邮件] 发送失败（不影响签到结论）：%s: %s"
-              % (type(e).__name__, mask_text(e)))
+        name, detail = type(e).__name__, str(e)
+        hint = ""
+        if "SMTPServerDisconnected" in name or "535" in detail:
+            hint = ("（多为认证失败：确认用的是「客户端密码/授权码」而不是登录密码，"
+                    "且邮箱设置里 IMAP/SMTP 服务已开启）")
+        elif "550" in detail or "553" in detail:
+            hint = "（多为发件人与登录账号不一致：MAIL_FROM 保持默认，等于 SMTP_USER）"
+        elif "timed out" in detail.lower() or "refused" in detail.lower():
+            hint = "（连不上服务器：确认 SMTP_HOST/SMTP_PORT，139/QQ/163 用 465，Gmail 用 587）"
+        print("[邮件] 发送失败（不影响签到结论）：%s: %s%s"
+              % (name, mask_text(detail), hint))
         return False
 
 
@@ -480,6 +488,15 @@ def notify(subject, text, html):
 def main():
     argv = sys.argv[1:]
     no_push = "--no-push" in argv
+
+    # 0. 只测邮件通道（不跑业务，方便配 secret 前先验证凭据）
+    if "--test-mail" in argv:
+        subject = "Buddy加油站 · 邮件通道测试"
+        text = ("这是一封来自 wb-buddy-auto 的测试邮件。\n\n"
+                "收到即表示 SMTP 配置正确，之后每天的签到/猫猫结果会用同样格式发到这个邮箱。")
+        ok = send_mail(subject, text, "<p>%s</p>" % text.replace("\n", "<br>"))
+        print("[test-mail] %s" % ("成功" if ok else "失败，按上面提示排查"))
+        return 0 if ok else 1
 
     # 1. 登录态
     try:
