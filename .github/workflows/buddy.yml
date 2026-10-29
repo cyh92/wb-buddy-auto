@@ -4,7 +4,7 @@ on:
   schedule:
     # GitHub cron 用 UTC。每天一次
     - cron: "10 20 * * *"
-    timezoneLinux: "Asia/Shanghai"
+      timezoneLinux: "Asia/Shanghai"
   # 手动触发：Actions 页面 → Run workflow，用于首次验收/补签
   workflow_dispatch:
 
